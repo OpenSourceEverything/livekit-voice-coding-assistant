@@ -1,161 +1,297 @@
-<a href="https://livekit.io/">
-  <img src="./.github/assets/livekit-mark.png" alt="LiveKit logo" width="100" height="100">
-</a>
+# LiveKit Voice Coding Assistant
 
-# LiveKit Agents starter for Python
+Talk to a LiveKit voice agent about a configured source repository. Find symbols,
+read bounded excerpts, inspect Git, run locally enabled test aliases, and stage
+changes for review. The local CLI applies a reviewed diff. Telephone sessions
+are authenticated with keypad digits and default to read-only. An explicit
+local opt-in permits phone proposals, never phone apply/push/deployment.
 
-A starter project for building voice AI apps with [LiveKit Agents for Python](https://github.com/livekit/agents) and [LiveKit Cloud](https://cloud.livekit.io/).
+Built on the MIT-licensed
+[official Python starter](https://github.com/livekit-examples/agent-starter-python).
+That starter supplied the initial agent/project structure; the repository tools,
+approval checks, keypad authentication, usage reporting and saved-job workflow
+were added here. Setup follows the
+[official LiveKit Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai/)
+and SDK documentation. The project uses uv to create a repeatable locked Python
+environment; it is a project setup choice, not a LiveKit Agents SDK requirement.
+See [validation](docs/VALIDATION.md) for reproducible checks and the scope of
+observed voice and telephone behavior. See [the code map and hygiene guide](docs/CODE_GUIDE.md)
+for module ownership and what the tests do and do not prove.
 
-The starter includes:
+For the bounded phone interruption retest, use the
+[call checklist](docs/CALL_DIAGNOSTICS.md#stop-behavior-and-verification).
+Local VAD is now the default: no adaptive-classifier quota dependency, but
+background speech/acknowledgments can also interrupt. `make status` shows the
+configured mode; `make call-report` shows the latest recorded call's mode and
+stop events. Neither command proves the caller heard silence.
 
-- A simple [voice AI assistant](https://docs.livekit.io/agents/start/voice-ai/) to extend and customize.
-- A voice pipeline built on [LiveKit Inference](https://docs.livekit.io/agents/models/inference/), which gives you access to [models](https://docs.livekit.io/agents/models/) from top labs with no extra configuration:
-  - The default LLM is Gemma 4 31B, an open-weight model [hosted by LiveKit](https://docs.livekit.io/agents/models/llm/livekit/) and tuned for voice AI.
-  - The default TTS is [Fish Audio S2.1 Pro](https://docs.livekit.io/agents/models/tts/fishaudio/), an expressive and cost-effective voice.
-  - More than 50 other models are available from OpenAI, Cartesia, Deepgram, and other providers.
-  - [Realtime models](https://docs.livekit.io/agents/models/realtime/) such as OpenAI GPT-Live. Many other models are available through the [plugin ecosystem](https://docs.livekit.io/agents/models/#plugins).
-- [Expressive mode](https://docs.livekit.io/agents/models/tts/expressive/), on by default, so your agent's voice carries emotion and pacing that fit the conversation.
-- [Keyterms](https://docs.livekit.io/agents/models/stt/keyterms/), on by default, so speech recognition gets your names, brands, and jargon right, including names it picks up during the conversation, like a caller's.
-- [LiveKit Turn Detector](https://docs.livekit.io/agents/logic/turns/turn-detector/), which knows when the user has finished speaking, in 14 languages.
-- [Adaptive interruption handling](https://docs.livekit.io/agents/logic/turns/adaptive-interruption-handling/), which tells a real interruption from an "uh-huh" or background noise, so your agent doesn't stop talking when it shouldn't.
-- [Background voice cancellation](https://docs.livekit.io/transport/media/noise-cancellation/).
-- Session transcripts, traces, and recordings from LiveKit [Agent Observability](https://docs.livekit.io/testing/observability/).
-- [Simulations](https://docs.livekit.io/testing/simulations/) that test full conversations with your agent, run in CI on every merge to `main`.
-- A `Dockerfile` for [deploying to LiveKit Cloud](https://docs.livekit.io/deploy/agents/).
+## Quick operating guide — start here
 
-The starter works with any [custom web or mobile frontend](https://docs.livekit.io/frontends/) or with [telephony](https://docs.livekit.io/telephony/).
+This repository is the **assistant**, not the software it edits. A local Python
+worker connects a browser microphone or an authenticated incoming call to one
+chosen Git checkout. Cloud services handle speech/model inference. The normal
+workflow is ask → inspect source → save a proposal → separately review/apply.
+An optional background worker can prepare that proposal after a conversation
+ends; automatic PR creation and home deployment are not implemented yet.
 
-## Using coding agents
+### First setup on another Linux computer
 
-This project works with coding agents like [Claude Code](https://claude.com/product/claude-code), [Cursor](https://www.cursor.com/), and [Codex](https://openai.com/codex/).
+1. Install Git, ripgrep, curl and Make using your OS package manager. On Debian/
+   Ubuntu, the prerequisite command is shown under Local setup below.
+2. Clone this assistant only if you do not already have a checkout:
 
-LiveKit offers both a CLI and an [MCP server](https://docs.livekit.io/reference/developer-tools/docs-mcp/) for browsing and searching its documentation. Search returns short excerpts, so fetch the full page to read the details:
+   ```bash
+   git clone https://github.com/OpenSourceEverything/livekit-voice-coding-assistant.git
+   cd livekit-voice-coding-assistant
+   make setup
+   make check
+   make acceptance
+   make status
+   ```
 
-```console
-lk docs search "testing my agent"
-lk docs get-page /testing/unit-tests
+   Setup downloads checksum-checked tools locally, creates .venv from the locked
+   dependencies, initializes a synthetic Git fixture, and checks offline
+   prerequisites. The other commands test/check; they do not make calls or
+   deploy anything. No manual virtualenv activation or requirements.txt needed.
+3. For real voice, follow Local setup below to log into the intended existing
+   LiveKit project and write the ignored .env.local. Keep its permissions 600.
+   Inspect configuration with make status; never paste .env.local contents.
+
+### Use an existing repository or add another one
+
+No copying into the assistant, special Git initialization or target-repo venv
+is needed for source search/read. Choose an existing local Git checkout suitable
+for sending excerpts to model providers. If it is only on GitHub, clone it into
+an explicitly chosen folder first; do not clone over existing work.
+
+In the terminal that will run the assistant:
+
+```bash
+export REPO_ROOT="/absolute/path/to/your/existing/repo"
+make status
+make dev PROJECT=YOUR_PROJECT_ALIAS
 ```
 
-The project also includes an [`AGENTS.md`](AGENTS.md) file, so your coding agent follows LiveKit's best practices for workflows, handoffs, and testing, and tries its changes with the [agent debugger](https://docs.livekit.io/testing/debugger/).
+The quoted absolute path avoids ambiguity. This selection lasts in that shell;
+it does not edit the target repo or private environment file. For a persistent
+choice, set just REPO_ROOT in .env.local. Restart a running worker after changing
+it. Shell environment overrides .env.local, so check make status in that same
+terminal before starting. Do not run target setup/install/test commands merely
+to let the assistant explain source. Any target test environment is a separate,
+repo-specific setup; tests can execute that repository's code.
 
-For more guidance at each stage of the work, from building and debugging to testing and deploying, install LiveKit's [agent skills](https://docs.livekit.io/intro/coding-agents/#agent-skills). The CLI installs them for the coding agents on your machine and adds the Docs MCP server to their config. `lk agent init` offers to do this when it creates your project, or you can run it yourself:
+Open the intended LiveKit project's Agent Console, choose the local worker and
+its printed development deployment, allow the microphone, and ask:
+"Find the main entry point and explain it. Do not change anything."
+Use Ctrl+C in the worker terminal to stop. The hosted Cloud demo cannot inspect
+this local checkout. For an already configured phone rule, retain its exact
+development deployment rather than blindly using the random make dev default;
+see [SIP setup](docs/SIP_SETUP.md). Do not buy a second number or upgrade a plan
+as a troubleshooting step.
 
-```console
-lk skills install
+### Request an edit and verify it
+
+Ask for one small proposal, inspect its actual saved diff, and use the separate
+local approval/apply command under Changes and tests below. Staging does not
+edit source, run tests, push, open a PR or deploy. For saved requests that outlive
+the call, follow [background jobs](docs/BACKGROUND_JOBS.md): jobs are default-off,
+require a separate worker and return a real job number before hang-up. There is
+no automatic text/callback. Use make status before/after for local usage; remaining
+account credit is unknown, not a guessed dollar balance.
+
+### How this repository was assembled
+
+1. Started with the official Python agent starter; retained its MIT attribution.
+2. Declared Python/dependencies in pyproject.toml and pinned them in uv.lock;
+   bootstrap and Make targets make setup repeatable without global pip installs.
+3. Added bounded Git/source tools, opt-in fixed tests, staged diffs and separate
+   source-hash-bound approval. Model instructions are not the security boundary.
+4. Connected STT → LLM/tools → TTS, then added numeric usage/latency reporting.
+5. Added keypad-gated incoming telephony; investigated actual startup failures
+   rather than deliberately breaking the call. Added regression tests for them.
+6. Added SQLite saved jobs and a separately bounded Codex proposal worker;
+   validated shutdown/retrieval using synthetic source without applying it.
+7. Added read-only home/public baseline checks. PR/deployment integration remains
+   a separate gate, not a feature implied by a configured GitHub login.
+
+See [the code walkthrough](docs/CODEBASE_TAKEOVER.md) for module ownership,
+[observed validation](docs/VALIDATION.md) for actual results and gaps, and the
+runbooks below for deeper details. Renaming this checkout requires rebuilding
+.venv with the locked dependencies because executable paths can be absolute.
+
+## Architecture
+
+```text
+Browser microphone → LiveKit → speech recognition → language model → speech
+                                                       |
+                                             checked Python tools
+                                                       |
+                                          source / Git / staged diff
 ```
 
-Run `lk skills update` to get the latest skills, and commit `skills-lock.json` along with them. See the [coding agents guide](https://docs.livekit.io/intro/coding-agents/) for more details.
+Python 3.12 and LiveKit Agents form the worker. The default model pipeline uses
+AssemblyAI for transcription, Gemma 4 for reasoning/tool calls, and Fish Audio
+for speech, with Silero ONNX voice activity detection. Models are configurable.
+The normal desktop workflow needs no telephone number. Optional inbound SIP
+provides authenticated access through the same repository tools. There is no
+custom website or IDE extension: use LiveKit's browser Agent Console for audio,
+and keep the Python worker running on the computer holding the source checkout.
 
-## Dev setup
+Optional [background proposal jobs](docs/BACKGROUND_JOBS.md) persist a small
+request before hang-up. A separate local worker prepares a review artifact and
+a later authenticated call retrieves status. This is not automatic PR creation,
+phone approval, deployment, callback or SMS; those remain separate integrations.
+For an existing home installation, [deployment preparation](docs/HOME_DEPLOYMENT.md)
+provides a read-only baseline check and the remaining approval gates.
 
-Install the [LiveKit CLI](https://docs.livekit.io/intro/basics/cli/), version 2.18.8 or later:
+## Local setup
 
-- **macOS:** `brew install livekit-cli`
-- **Linux:** `curl -sSL https://get.livekit.io/cli | bash`
-- **Windows:** `winget install LiveKit.LiveKitCLI`
+Linux x86_64 or aarch64 is supported by the bootstrap. Install Git, ripgrep,
+curl, and Make first (on Debian/Ubuntu: `sudo apt-get install git ripgrep curl make`).
+From the checkout root, start without any account:
 
-Check your version with `lk --version`. To update an existing install, see [Update the CLI](https://docs.livekit.io/reference/developer-tools/livekit-cli/#updates).
+```bash
+make setup
+make check
+make acceptance
+make status
+```
 
-Then create a project from this template. The CLI clones the template and configures your environment:
+`make setup` installs pinned tools into `.tools/bin` and runs `uv sync --locked`.
+uv creates the ignored `.venv` here, uses Python 3.12 from `.python-version`, and
+downloads that Python version if it is missing. `pyproject.toml` declares the
+dependencies; `uv.lock` records exact resolved versions. Rerunning setup reuses
+matching tools and the locked environment. It does not install Python packages
+globally, upgrade the lockfile, or need a duplicate `requirements.txt`.
+[uv project guide](https://docs.astral.sh/uv/guides/projects/),
+[Python installation](https://docs.astral.sh/uv/guides/install-python/).
 
-```console
+The Make commands select `.venv` automatically; activation is optional. For an
+interactive shell, use `source .venv/bin/activate` and later `deactivate`.
+
+`make status` is the one local entry point: selected workspace, configuration
+readiness, phone capability, recorded usage, and the direct billing link when
+LIVEKIT_PROJECT_ID is configured privately in `.env.local`. It makes no network
+requests. It does not claim the worker or a telephone route is live.
+
+For live browser audio, connect the intended LiveKit project:
+
+```bash
+export PATH="$PWD/.tools/bin:$PATH"
 lk cloud auth
-lk agent init my-agent --template agent-starter-python
+lk --project YOUR_PROJECT_ALIAS app env --write --destination .env.local
+chmod 600 .env.local
+make demo
+make doctor
+make dev PROJECT=YOUR_PROJECT_ALIAS
 ```
 
-<details>
-<summary>Set up the project manually</summary>
+Reuse an existing project where available; these steps do not create one.
+Replace YOUR_PROJECT_ALIAS with the alias shown by `lk project list`.
+Open that project in https://cloud.livekit.io/ and launch Agent Console.
+Select the local worker's development deployment.
+The Python project name in `pyproject.toml` is
+`livekit-voice-coding-assistant`. A Cloud display name, saved CLI project alias,
+project subdomain, and agent dispatch name are separate identifiers.
+For `agent dev`, select the development deployment printed in the terminal;
+it is separate from the Cloud worker's production deployment.
+Use the intended project and deployment to avoid routing a local source request
+to a Cloud fixture. Grant microphone permission. Ask:
+"Find where UART5 DMA transmission is implemented."
 
-Clone the repository and install dependencies into a virtual environment with [uv](https://docs.astral.sh/uv/):
+Keep `.env.local` and per-account deployment configuration private. Running an
+agent can consume Cloud/model allowances; inspect current account limits first.
 
-```console
-git clone https://github.com/livekit-examples/agent-starter-python.git
-cd agent-starter-python
-uv sync
+For optional GitHub PR work, `make github-setup` installs a pinned, checksum-checked
+GitHub CLI locally. Authenticate separately with
+`.tools/bin/gh auth login --hostname github.com --git-protocol ssh --web --skip-ssh-key`.
+Do not paste tokens into chat. Installing the tool does not log in, upload SSH
+keys, create a PR, or grant the phone worker publishing/deployment permission.
+`make acceptance` is different: it runs only a disposable local fixture, exercises
+the actual tool/review boundary, and makes no provider calls. It never changes
+the configured workspace. It is not a voice or telephone qualification.
+
+## Two execution locations
+
+Local mode connects this computer to LiveKit and can access the exact repository
+specified in REPO_ROOT. Default: the synthetic var/demo-repo. Set REPO_ROOT in
+.env.local to a checkout suitable for sharing with the configured model.
+
+The Docker Cloud deployment includes only the synthetic fixture. It cannot read
+your computer's repositories. It sets COPILOT_MODE=cloud-demo, disables tests,
+proposals, and Codex, and remains a demonstration of voice/search/Git tools.
+Use the local worker for real source work; a remote-PC connector is future work.
+
+## Changes and tests
+
+ENABLE_LOCAL_TESTS=false by default. Enabling it permits only a fixed pytest
+alias. Tests execute repository code with your OS file access; use trusted repos.
+No voice tool accepts arbitrary shell commands.
+
+ENABLE_PROPOSALS=true locally permits staged changes to existing allowed files.
+Review a proposal in VS Code or the terminal:
+
+```bash
+.tools/bin/uv run python tools/review_change.py show PROPOSAL_ID --repo var/demo-repo
+.tools/bin/uv run python tools/review_change.py apply PROPOSAL_ID --repo var/demo-repo --approve
 ```
 
-Sign up for [LiveKit Cloud](https://cloud.livekit.io/), then copy `.env.example` to `.env.local` and fill it in. To have the CLI write your project's URL and API keys into the file instead, run:
+The apply function is never registered as a LiveKit tool. Source hashes reject
+stale overwrites. ENABLE_CODEX=false by default; see docs/CODEX_BRIDGE.md for the
+optional saved-login Codex integration and its local permission limits.
+Known secret paths are excluded before reading; this is not a complete content
+secret scanner. Choose a repository you are allowed to send to model providers.
 
-```console
-lk cloud auth
-lk app env --write --destination .env.local
-```
+## Telephone and measurement
 
-</details>
+Phone access is disabled unless PHONE_ACCESS_PIN is configured. It accepts
+six to twelve keypad digits followed by pound; the PIN is not sent to the LLM.
+Every telephone tool checks its configured policy, even if called directly.
 
-## Run the agent
+ENABLE_PHONE_PROPOSALS=false by default. When explicitly enabled on the local
+worker, a keypad-authenticated caller may stage a diff while source remains
+unchanged. A human still reviews and applies it using the separate local CLI.
+Phone tests, Codex, apply, PR creation, push, merge, and deployment are unavailable.
+This is supervised proposal initiation, not an end-to-end phone release system.
 
-The `lk agent console`, `lk agent dev`, and `lk agent debugger` commands run your agent on your own machine. To talk to it in your terminal:
+## Usage without dashboard digging
 
-```console
-lk agent console
-```
+For debugging, `make call-report` summarizes safe RTC/SIP lifecycle events.
+See [call diagnostics and the stop test](docs/CALL_DIAGNOSTICS.md): it explains
+what is logged, what is deliberately excluded, and what still needs a human
+listening test. These are not raw SIP packet traces or acoustic benchmarks.
 
-To connect it to LiveKit Cloud so a frontend, a phone call, or the [Agent Console](https://docs.livekit.io/testing/agent-console/) can reach it:
+Run `make status` before and after a session. `make usage` shows per-model detail;
+`.tools/bin/uv run python tools/status.py --json` returns structured local status.
+New sessions save private numeric snapshots to the ignored `var/usage.jsonl`.
+Successive SDK updates replace previous cumulative totals; they are not summed.
+Synthetic sessions are excluded unless `--include-synthetic` is requested.
 
-```console
-lk agent dev
-```
+The report covers sessions recorded by this worker, not historic or account-wide
+usage. It shows tokens, speech characters/processed audio, and a partial estimate
+for the configured Gemma/Fish models using prices checked on 2026-10-22. STT
+connection billing, hosting, media, telephone, other workers, and account credits
+are not included. Remaining monthly credit is explicitly unknown, never a
+guessed subtraction from a plan allowance. No balance endpoint or dashboard
+session token is used. See [SDK usage hooks](https://docs.livekit.io/testing/observability/data/)
+and [billing meters](https://docs.livekit.io/deploy/admin/billing/). For a
+plain-language explanation of the local estimate, see [billing and usage](docs/BILLING.md).
 
-To let a coding agent or a script test it one text turn at a time, use the [agent debugger](https://docs.livekit.io/testing/debugger/). Each turn prints the agent's reply along with the tool calls and handoffs behind it:
+See docs/SIP_SETUP.md and docs/SIP_DEBUGGING_RUNBOOK.md for inbound setup,
+Google Voice constraints, call isolation, and troubleshooting evidence.
+See docs/LATENCY_AND_INTERRUPTION.md for numeric metrics and honest measurement
+limits. Never publish raw source, transcripts, call identifiers, or credentials.
 
-```console
-lk agent debugger start
-lk agent debugger say "Hi, what can you do?"
-lk agent debugger stop
-```
+## Technical review
 
-In production, run the agent directly:
+See [validation](docs/VALIDATION.md) for observed results and remaining gates,
+the [code walkthrough](docs/CODEBASE_TAKEOVER.md) for ownership boundaries,
+and [deployment options](docs/DEPLOYMENT.md) for worker versus full-stack hosting.
+The implementation keeps repository permissions separate from model instructions.
+Inspect the source and tests alongside the runbooks when reviewing these boundaries.
 
-```console
-uv run src/agent.py start
-```
-
-## Frontends and telephony
-
-Pair the agent with a prebuilt frontend starter, or add telephony:
-
-| Platform | Link | Description |
-|----------|----------|-------------|
-| **Web** | [`livekit-examples/agent-starter-react`](https://github.com/livekit-examples/agent-starter-react) | Web voice AI assistant with React & Next.js |
-| **iOS/macOS** | [`livekit-examples/agent-starter-swift`](https://github.com/livekit-examples/agent-starter-swift) | Native iOS, macOS, and visionOS voice AI assistant |
-| **Flutter** | [`livekit-examples/agent-starter-flutter`](https://github.com/livekit-examples/agent-starter-flutter) | Cross-platform voice AI assistant app |
-| **React Native** | [`livekit-examples/voice-assistant-react-native`](https://github.com/livekit-examples/voice-assistant-react-native) | Native mobile app with React Native & Expo |
-| **Android** | [`livekit-examples/agent-starter-android`](https://github.com/livekit-examples/agent-starter-android) | Native Android app with Kotlin & Jetpack Compose |
-| **Web Embed** | [`livekit-examples/agent-starter-embed`](https://github.com/livekit-examples/agent-starter-embed) | Voice AI widget for any website |
-| **Telephony** | [Documentation](https://docs.livekit.io/telephony/) | Add inbound or outbound calling to your agent |
-
-For more options, see the [frontend guide](https://docs.livekit.io/frontends/).
-
-## Testing and debugging
-
-Simulations run full multi-turn conversations between a simulated user and your agent on LiveKit Cloud, then judge each transcript. The scenarios live in [`scenarios.yaml`](scenarios.yaml). Run them locally with the CLI:
-
-```console
-lk agent simulate text --scenarios scenarios.yaml
-```
-
-The `Simulations` workflow in [`.github/workflows/simulations.yml`](.github/workflows/simulations.yml) runs the same file on every merge to `main`, and on demand from the Actions tab. It doesn't run on every pull request push because each run uses real inference. See the [simulations guide](https://docs.livekit.io/testing/simulations/) for how to write scenarios and read results.
-
-To check a change turn by turn without a live session, use the [agent debugger](https://docs.livekit.io/testing/debugger/) shown in [Run the agent](#run-the-agent).
-
-To debug a running agent, open it in the [Agent Console](https://docs.livekit.io/testing/agent-console/). It shows events, tool calls, and model timing as you talk to the agent. To stream logs from a deployed agent, run `lk agent logs`.
-
-## Using this template for your own project
-
-After you create your own project from this template:
-
-- **Commit `uv.lock`.** The template doesn't track it, but your project should, for reproducible builds. If you deploy to LiveKit Cloud, commit `livekit.toml` too.
-- **Add repository secrets.** Add `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET` as [repository secrets](https://docs.github.com/en/actions/how-tos/writing-workflows/choosing-what-your-workflow-does/using-secrets-in-github-actions) so the simulations can run in CI.
-
-## Deploying to production
-
-To deploy the agent to LiveKit Cloud or another environment with the included `Dockerfile`, see the [deployment guide](https://docs.livekit.io/deploy/agents/).
-
-## Self-hosted LiveKit
-
-You can self-host LiveKit instead of using LiveKit Cloud. See the [self-hosting guide](https://docs.livekit.io/transport/self-hosting/local/). If you self-host, use [model plugins](https://docs.livekit.io/agents/models/#plugins) instead of LiveKit Inference, and remove the [LiveKit Cloud noise cancellation](https://docs.livekit.io/transport/media/noise-cancellation/) plugin.
-
-## License
-
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+Primary LiveKit sources:
+[Voice quickstart](https://docs.livekit.io/agents/start/voice-ai/),
+[function tools](https://docs.livekit.io/agents/logic/tools/definition/),
+[workflows](https://docs.livekit.io/agents/logic/workflows/),
+[simulations](https://docs.livekit.io/testing/simulations/).

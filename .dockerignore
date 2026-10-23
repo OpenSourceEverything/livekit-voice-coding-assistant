@@ -15,6 +15,12 @@ build/
 
 # Virtual environments
 .venv/
+.tools/
+var/
+*.sqlite3
+*.sqlite3-*
+*.db
+*.db-*
 venv/
 
 # Caches and test output
@@ -46,9 +52,8 @@ coverage/
 # Project docs and misc
 README.md
 CONTRIBUTING.md
-LICENSE
 
-# Coding agent files
+# Local development configuration
 .claude/
 .codex/
 .cursor/

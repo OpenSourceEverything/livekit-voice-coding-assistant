@@ -10,24 +10,20 @@ KMS
 *.egg-info
 .pytest_cache
 .ruff_cache
+.tools/
+var/
+# Per-account deployment identifiers; retain locally, do not publish.
+livekit.toml
+*.sqlite3
+*.sqlite3-*
+*.db
+*.db-*
 
-# Claude Code
-.claude/settings.local.json
-.claude/worktrees/
-
-# OpenAI Codex
-.codex/config.local.toml
-
-# Gemini CLI
-.gemini/history/
-.gemini/tmp/
-.gemini/google_accounts.json
-.gemini/installation_id
-.gemini/oauth_creds.json
-
-# Cursor
-.cursor/chat/
-.cursor/rules/*.local.mdc
-
-# GitHub CLI
+# Local editor and development configuration
+AGENTS.md
+.agents/
+.claude/
+.codex/
+.gemini/
+.cursor/
 .github/personal-instructions.md

@@ -1,4 +1,4 @@
-name: Ruff
+name: Offline checks
 
 on:
   push:
@@ -6,17 +6,28 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   ruff-check:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
     - uses: actions/checkout@v6
 
+    - name: Install system tools
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends git ripgrep
+        git --version
+        rg --version
+
     - name: Install uv
       uses: astral-sh/setup-uv@v1
       with:
-        version: "latest"
+        version: "0.13.5"
 
     - name: Set up Python
       uses: actions/setup-python@v4
@@ -24,10 +35,29 @@ jobs:
         python-version: "3.12"
 
     - name: Install dependencies
-      run: UV_GIT_LFS=1 uv sync --dev
+      run: uv sync --locked
 
     - name: Run ruff linter
       run: uv run ruff check --output-format=github .
 
     - name: Run ruff formatter
       run: uv run ruff format --check --diff .
+
+    - name: Offline tests
+      run: uv run pytest -q --junitxml=var/pytest-results.xml
+
+    - name: Annotate test failures
+      if: failure()
+      run: |
+        python - <<'PY'
+        from pathlib import Path
+        import xml.etree.ElementTree as ET
+        report = Path("var/pytest-results.xml")
+        if report.exists():
+            for case in ET.parse(report).getroot().iter("testcase"):
+                for tag in ("failure", "error"):
+                    for issue in case.findall(tag):
+                        text = (case.get("name", "test") + ": " + (issue.text or issue.get("message", "failed")))[:4000]
+                        text = text.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+                        print("::error::" + text)
+        PY

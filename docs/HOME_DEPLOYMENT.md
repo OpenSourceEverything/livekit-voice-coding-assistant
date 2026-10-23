@@ -1,4 +1,10 @@
-# Home deployment preflight: preparation, not deployment
+# VideoMonitoringSystem deployment inventory (optional example)
+
+This helper is specific to VideoMonitoringSystem. It is not part of the voice
+agent's repository tools and is not required to connect another source checkout.
+The generic assistant selects its workspace with `REPO_ROOT`; this example adds
+an application-specific comparison against an existing installation. It does
+not provide a generic deployment adapter.
 
 A public checkout, a local development checkout, and an installed application
 can contain different software even when their version strings match. Never
@@ -15,7 +21,7 @@ profile or put credentials in it:
   "primary_repo": "/absolute/path/to/current/source",
   "pr_repo": "/absolute/path/to/reviewed/candidate",
   "ssh_host": "user@host.example",
-  "installed_gui": "/absolute/path/to/installed/application.py"
+  "installed_gui": "/opt/video-monitoring-system/lib/python3.13/site-packages/video_monitoring_system/gui.py"
 }
 ```
 
@@ -23,8 +29,11 @@ Protect the profile with `chmod 600 var/vms-home.json`. Reuse a pinned SSH
 host/key configuration. Do not disable host checking or put passwords in the
 profile. Run `make vms-preflight` to report checkout revisions, dirty/clean
 state, source fingerprints, installed package version, and configured service
-state. The command is read-only: it does not upload, patch, install, restart,
-read credentials, or deploy. A successful inventory is not deployment
+state. The helper expects `src/video_monitoring_system/gui.py` in each checkout,
+an installed GUI under `/opt/video-monitoring-system/`, and that application's
+Python environment and service names. Adjust the Python-version segment of the
+example path to match the installation. The command is read-only: it does not
+upload, patch, install, restart, read credentials, or deploy. A successful inventory is not deployment
 permission or readiness.
 
 ## Gates before a real deployment

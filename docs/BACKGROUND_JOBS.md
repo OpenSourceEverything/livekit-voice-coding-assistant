@@ -75,7 +75,7 @@ a real installation. A public repo checkout does not grant recorder SSH access.
 interrupted-work recovery, source drift, path/range refusal, private database
 permissions and phone/Cloud guards. `make acceptance` remains an offline fixture.
 `make jobs-probe` is different: **one actual Codex model call** against a tiny
-synthetic line, returning explanation only. It never reads the selected VMS repo.
+synthetic line, returning explanation only. It never reads the selected workspace.
 
 The implementation follows the official
 [Codex non-interactive documentation](https://learn.chatgpt.com/docs/non-interactive-mode)

@@ -5,7 +5,7 @@ PROJECT ?= coding-buddy
 export PATH := $(CURDIR)/.tools/bin:$(PATH)
 export UV_PROJECT_ENVIRONMENT := $(CURDIR)/.venv
 
-.PHONY: setup check demo acceptance doctor status usage dev console job-worker jobs-probe github-setup vms-preflight call-report
+.PHONY: setup check demo acceptance doctor status usage dev console job-worker jobs-probe github-setup vms-preflight call-report watch-agent
 setup:
 	bash tools/bootstrap.sh
 	$(UV) sync --locked
@@ -14,7 +14,7 @@ setup:
 check:
 	$(UV) run ruff format --check src tools tests
 	$(UV) run ruff check src tools tests
-	$(UV) run pytest -q
+	$(UV) run python -m pytest -q
 	$(GIT) diff --check
 demo:
 	$(UV) run python tools/init_demo_repo.py
@@ -41,3 +41,5 @@ vms-preflight:
 	$(UV) run python tools/vms_preflight.py --probe-home
 call-report:
 	$(UV) run python tools/report_call.py
+watch-agent:
+	$(UV) run python tools/watch_agent.py $(ARGS)

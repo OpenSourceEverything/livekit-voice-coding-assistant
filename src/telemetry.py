@@ -14,7 +14,7 @@ from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
-logger = logging.getLogger(__name__)
+from call_diagnostics import log_trace_event
 
 TRANSPORTS = frozenset({"browser", "sip", "unknown"})
 METRICS = {
@@ -133,7 +133,11 @@ class SessionTelemetry:
                     stream.write(json.dumps(row, allow_nan=False) + "\n")
             return True
         except OSError:
-            logger.warning("Latency telemetry write failed; a measurement was lost")
+            log_trace_event(
+                "telemetry_write_failed",
+                level=logging.WARNING,
+                measurement_lost=True,
+            )
             return False
 
     def attach(

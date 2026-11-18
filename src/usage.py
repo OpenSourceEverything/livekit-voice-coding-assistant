@@ -20,7 +20,7 @@ from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
 
-logger = logging.getLogger(__name__)
+from call_diagnostics import log_trace_event
 
 PRICING_URL = "https://livekit.com/pricing/inference"
 PRICING_DATE = "2026-10-22"
@@ -493,7 +493,11 @@ class SessionUsageMonitor:
                 stream.write(json.dumps(row, allow_nan=False) + "\n")
             return True
         except OSError:
-            logger.warning("Usage ledger write failed; this run may be incomplete")
+            log_trace_event(
+                "usage_ledger_write_failed",
+                level=logging.WARNING,
+                snapshot_pending=True,
+            )
             return False
 
     def summary(self, *, include_synthetic: bool = False) -> dict:

@@ -8,6 +8,7 @@ import math
 import os
 import re
 import stat
+import sys
 import threading
 import time
 import uuid
@@ -15,7 +16,7 @@ from pathlib import Path
 
 from livekit import rtc
 
-logger = logging.getLogger(__name__)
+trace_logger = logging.getLogger("coding-buddy.trace")
 MAX_BYTES = 8 * 1024 * 1024
 EVENTS = frozenset(
     {
@@ -52,6 +53,14 @@ EVENTS = frozenset(
 )
 ENUMS = {
     "state": {"initializing", "idle", "listening", "thinking", "speaking", "away"},
+    "previous_state": {
+        "initializing",
+        "idle",
+        "listening",
+        "thinking",
+        "speaking",
+        "away",
+    },
     "sip_status": {"dialing", "ringing", "automation", "active", "hangup"},
     "mode": {"adaptive", "vad"},
     "kind": {"sip", "standard", "other"},
@@ -73,6 +82,57 @@ BOOLEANS = {
     "muted",
     "recoverable",
 }
+
+
+def log_trace_event(
+    message,
+    *,
+    source=None,
+    caller_frame=None,
+    function=None,
+    level=logging.INFO,
+    **params,
+):
+    """Write a live, source-qualified event using only caller-approved metadata.
+
+    Do not pass transcript, source, credentials, identifiers, or raw arguments
+    here. Call sites should provide fixed labels, booleans, counts, and durations.
+    """
+    if source is not None:
+        code = source.__code__
+        filename = code.co_filename
+        module = source.__module__
+        function = function or source.__name__
+    else:
+        frame = caller_frame or sys._getframe(1)
+        filename = frame.f_code.co_filename
+        module = frame.f_globals.get("__name__", "unknown")
+        function = function or frame.f_code.co_name
+
+    rendered = []
+    for key, value in sorted(params.items()):
+        if type(value) is bool:
+            value_text = str(value).lower()
+        elif type(value) in {int, float}:
+            value_text = str(value)
+        elif isinstance(value, str) and re.fullmatch(
+            r"[a-zA-Z0-9_.,:=+/-]{1,120}", value
+        ):
+            value_text = value
+        else:
+            value_text = f"<{type(value).__name__}>"
+        rendered.append(f"{key}={value_text}")
+    params_text = " ".join(rendered) if rendered else "none"
+
+    trace_logger.log(
+        level,
+        "%s::%s::%s: %s - %s",
+        os.path.basename(filename),
+        module,
+        function,
+        message,
+        params_text,
+    )
 
 
 class CallDiagnostics:
@@ -115,6 +175,7 @@ class CallDiagnostics:
                 )
             ):
                 safe[key] = value
+        elapsed = max(0, self.clock() - self.started)
         row = {
             "schema_version": 1,
             "session_id": self.session_id,
@@ -122,9 +183,25 @@ class CallDiagnostics:
             "source": "synthetic" if self.synthetic else "live",
             "event": event,
             "recorded_at": time.time(),
-            "elapsed": max(0, self.clock() - self.started),
+            "elapsed": elapsed,
             **safe,
         }
+        # Live terminal output is useful during a call; partial-transcript
+        # notifications are frequent and are intentionally kept file-only.
+        if event != "transcription" or safe.get("is_final") is True:
+            caller = sys._getframe(1)
+            caller_name = caller.f_code.co_name
+            # The SDK event hooks are lambdas; label those lines with the event
+            # name instead of the unhelpful synthetic function name "<lambda>".
+            if caller_name == "<lambda>":
+                caller_name = event
+            log_trace_event(
+                event,
+                caller_frame=caller,
+                function=caller_name,
+                elapsed_ms=round(elapsed * 1000),
+                **safe,
+            )
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
             with self.lock:
@@ -145,7 +222,12 @@ class CallDiagnostics:
                     stream.write(json.dumps(row, allow_nan=False) + "\n")
             return True
         except OSError:
-            logger.warning("Call diagnostic write failed; no event payload was logged")
+            log_trace_event(
+                "diagnostic_write_failed",
+                caller_frame=sys._getframe(),
+                level=logging.WARNING,
+                error_type="OSError",
+            )
             return False
 
     def participant(self, event, participant):
@@ -175,11 +257,15 @@ class CallDiagnostics:
         self.record("session_start", mode=mode, min_duration=min_duration)
         session.on(
             "agent_state_changed",
-            lambda ev: self.record("agent_state", state=ev.new_state),
+            lambda ev: self.record(
+                "agent_state", previous_state=ev.old_state, state=ev.new_state
+            ),
         )
         session.on(
             "user_state_changed",
-            lambda ev: self.record("user_state", state=ev.new_state),
+            lambda ev: self.record(
+                "user_state", previous_state=ev.old_state, state=ev.new_state
+            ),
         )
         session.on(
             "user_input_transcribed",

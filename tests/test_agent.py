@@ -1,5 +1,6 @@
 """Exercise installed LiveKit SDK tool registration without model/network calls."""
 
+import logging
 import subprocess
 import sys
 from pathlib import Path
@@ -196,6 +197,37 @@ async def test_sdk_tool_calls_return_real_bounded_source_and_hash(
     assert "SYNTHETIC_SECRET" not in str(await agent.workspace_info())
     with pytest.raises(ToolError):
         await agent.read_source_file(".env")
+
+
+@pytest.mark.asyncio
+async def test_tool_trace_logs_source_and_shape_without_argument_or_result_text(
+    components: tuple, caplog
+) -> None:
+    agent = assistant(components, transport="browser")
+    await agent.configure_tools()
+
+    with caplog.at_level(logging.INFO, logger="coding-buddy.trace"):
+        result = await agent.search_repository("PRIVATE_QUERY_TEXT")
+
+    messages = [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == "coding-buddy.trace"
+    ]
+    assert any(
+        message.startswith("agent.py::agent::search_repository: tool_enter - ")
+        and "params=query" in message
+        for message in messages
+    )
+    assert any(
+        "tool_exit" in message
+        and "outcome=ok" in message
+        and "result_type=dict" in message
+        for message in messages
+    )
+    assert "PRIVATE_QUERY_TEXT" not in caplog.text
+    assert "uart5_dma_transmit" not in caplog.text
+    assert isinstance(result, dict)
 
 
 @pytest.mark.asyncio

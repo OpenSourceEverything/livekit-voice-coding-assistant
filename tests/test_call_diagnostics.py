@@ -1,6 +1,7 @@
 """RTC/SIP diagnostics without real network calls or sensitive logging."""
 
 import json
+import logging
 import stat
 from types import SimpleNamespace
 
@@ -65,6 +66,10 @@ def test_real_sdk_events_and_sip_attributes_are_allowlisted(tmp_path):
     assert "PRIVATE" not in content and "+1202" not in content
     rows = [json.loads(line) for line in content.splitlines()]
     assert any(row.get("sip_status") == "active" for row in rows)
+    assert any(
+        row.get("previous_state") == "thinking" and row.get("state") == "speaking"
+        for row in rows
+    )
     assert any(row["event"] == "track_subscription_failed" for row in rows)
     assert any(row["event"] == "local_track_published" for row in rows)
     assert rows[-1]["reason"] == "participant_disconnected"
@@ -94,6 +99,41 @@ def test_unknown_fields_and_bad_enum_values_cannot_become_logs(tmp_path):
         log.record("PRIVATE EVENT")
     with pytest.raises(ValueError):
         CallDiagnostics(path, session_id="PRIVATE CALL ID")
+
+
+def test_live_event_log_has_source_prefix_and_excludes_unapproved_text(
+    tmp_path, caplog
+):
+    log = CallDiagnostics(tmp_path / "calls.jsonl", transport="sip")
+
+    with caplog.at_level(logging.INFO, logger="coding-buddy.trace"):
+        log.record("session_start", mode="vad", transcript="PRIVATE TRANSCRIPT")
+
+    message = next(
+        record.getMessage()
+        for record in caplog.records
+        if record.name == "coding-buddy.trace"
+    )
+    assert message.startswith(
+        "test_call_diagnostics.py::test_call_diagnostics::"
+        "test_live_event_log_has_source_prefix_and_excludes_unapproved_text: "
+        "session_start - "
+    )
+    assert "mode=vad" in message
+    assert "PRIVATE" not in message
+
+
+def test_partial_transcription_events_are_not_written_to_live_log(tmp_path, caplog):
+    log = CallDiagnostics(tmp_path / "calls.jsonl")
+    session = Emitter()
+    log.attach(session)
+
+    with caplog.at_level(logging.INFO, logger="coding-buddy.trace"):
+        session.callbacks["user_input_transcribed"](
+            SimpleNamespace(is_final=False, transcript="PRIVATE PARTIAL TEXT")
+        )
+
+    assert not any("transcription" in record.getMessage() for record in caplog.records)
 
 
 def test_log_symlink_refused_and_full_file_does_not_grow(tmp_path, monkeypatch):

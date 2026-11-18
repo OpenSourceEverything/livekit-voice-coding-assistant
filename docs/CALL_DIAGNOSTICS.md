@@ -6,6 +6,51 @@ version; old calls are not reconstructed. `make usage` and the latency reporter
 answer different questions. The troubleshooting history is not a replacement
 for these logs, but preserves the cause, fix and retest for each actual incident.
 
+## Watch a local call live
+
+Start the local worker in a terminal with INFO logging, using the development
+deployment selected by the existing phone dispatch rule:
+
+```bash
+.tools/bin/lk --project YOUR_PROJECT_ALIAS agent dev --log-level INFO --deployment YOUR_PHONE_DISPATCH_DEPLOYMENT
+```
+
+Replace `YOUR_PROJECT_ALIAS` with the alias from `lk project list`, and
+`YOUR_PHONE_DISPATCH_DEPLOYMENT` with the development deployment ID selected by
+the existing phone dispatch rule. Watch this terminal while placing the call.
+The added lines use this format:
+
+```text
+agent.py::agent::search_repository: tool_enter - params=query tool=search_repository
+call_diagnostics.py::call_diagnostics::agent_state: agent_state - elapsed_ms=840 previous_state=listening state=speaking
+```
+
+Tool logs show which argument names were supplied, elapsed time, outcome, and
+result shape. They deliberately do not print argument values or returned source,
+diffs, transcripts, PIN digits, phone numbers, or provider error text. Partial
+transcription notifications are omitted from the live console to avoid spam;
+the privacy-filtered event file keeps only whether a transcript was final.
+These application trace lines appear where the worker process runs. A Cloud
+worker's terminal output must be viewed in its deployment logs instead.
+
+For a deployed Cloud agent, the wrapper can list agents in the selected project,
+prompt for one, check its status, then tail LiveKit's Cloud log stream:
+
+```bash
+make watch-agent
+```
+
+Or provide the agent ID directly. To select one deployment and save new output
+as it arrives:
+
+```bash
+make watch-agent ARGS="CA_AGENT_ID --deployment DEPLOYMENT_ID --save var/cloud-agent.log"
+```
+
+The save file is append-only and owner-only. Cloud logs are not filtered by
+the local privacy-safe trace helper; keep saved output private. This watches the
+deployed version only. It does not deploy local edits or monitor a local worker.
+
 ## What is recorded
 
 `src/call_diagnostics.py` writes ignored `var/calls.jsonl` with owner-only file
